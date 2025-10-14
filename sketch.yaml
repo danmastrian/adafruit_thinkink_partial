@@ -1,0 +1,13 @@
+profiles:
+  feather_rp2040_thinkink:
+    fqbn: rp2040:rp2040:adafruit_feather_thinkink
+    platforms:
+      - platform: rp2040:rp2040 (5.3.0)
+        platform_index_url: https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+    libraries:
+      - Adafruit EPD (4.6.6)
+      - Adafruit GFX Library (1.12.3)
+      - Adafruit BusIO (1.17.4)
+    port: COM4
+
+default_profile: feather_rp2040_thinkink
