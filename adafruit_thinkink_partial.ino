@@ -26,6 +26,9 @@
 #define EPD_SPI &SPI // primary SPI
 #endif
 
+#define Q(x) #x
+#define QUOTE(x) Q(x)
+
 // 1.54" Monochrome displays with 200x200 pixels and SSD1681 chipset
 // ThinkInk_154_Mono_D67 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY, EPD_SPI);
 
@@ -87,7 +90,7 @@
 
 // 'buddynote', 663x480px
 // 'buddynote', 663x480px
-const unsigned char epd_bitmap_buddynote [] PROGMEM = {
+const unsigned char epd_bitmap_buddynote [] /*PROGMEM*/ = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -2586,18 +2589,8 @@ const unsigned char* epd_bitmap_allArray[1] = {
 	epd_bitmap_buddynote
 };
 
-const uint16_t horizStartChBank = 50;
-const uint16_t horizChCount = 8;
-const uint16_t vertStartLine = 159;
-const uint16_t vertLineCount = 64;
-const uint16_t vertEndLine = vertStartLine + vertLineCount - 1;
-
-const uint16_t horizStartPixel = 8 * horizStartChBank;
-const uint16_t horizPixelCount = 8 * horizChCount;
-const uint16_t horizEndPixel = horizStartPixel + horizPixelCount - 1;
-
-#define LOBYTE(x) (x & 0xFF)
-#define HIBYTE(x) ((x >> 8) && 0xFF)
+#define LOBYTE(x) (x & (uint16_t)0x00FF)
+#define HIBYTE(x) ((x >> 8) & (uint16_t)0x00FF)
 
 uint8_t fc = 10; // Frame Count
 
@@ -2695,7 +2688,11 @@ class ThinkInk_750_Mono_AAAMFGN_Custom : public ThinkInk_750_Mono_AAAMFGN
     EPD_command(0x50, cmdBuf, sizeof(cmdBuf));
 	 }
 	 
-	 void enablePartialMode()
+	 void enablePartialMode(
+    uint16_t horizStartPixel,
+    uint16_t horizEndPixel,
+    uint16_t vertStartLine,
+    uint16_t vertEndLine)
   {
 		setCustomLUTs();
 		
@@ -2718,28 +2715,61 @@ class ThinkInk_750_Mono_AAAMFGN_Custom : public ThinkInk_750_Mono_AAAMFGN
 
   bool pixelValue = false;
 
-  void displayPartial()
+  void displayPartial(uint16_t pxStartX, uint16_t pxStartY, uint16_t pxCountX, uint16_t pxCountY)
   {
+    const uint16_t vertStartLine = 480 - pxStartY - pxCountY;
+    const uint16_t vertLineCount = pxCountY;
+    const uint16_t vertEndLine = vertStartLine + vertLineCount - 1;
+
+    uint16_t leftOverhang = pxStartX % 8;
+    pxStartX -= leftOverhang;
+    pxCountX += leftOverhang;
+    if (pxCountX % 8) {
+      pxCountX += 8 - (pxCountX % 8);
+    }
+
+    const uint16_t horizStartChBank = pxStartX / 8;
+    const uint16_t horizChCount = pxCountX / 8;
+
+    const uint16_t horizStartPixel = 8 * horizStartChBank;
+    const uint16_t horizPixelCount = 8 * horizChCount;
+    const uint16_t horizEndPixel = horizStartPixel + horizPixelCount - 1;
+
     powerUp();
-    enablePartialMode();
+    enablePartialMode(horizStartPixel, horizEndPixel, vertStartLine, vertEndLine);
     
     size_t bytesToSend = horizPixelCount * vertLineCount / 8;
-    Serial.printf("Writing %u bytes of %u to buffer1\n", bytesToSend, pixelValue);
-    memset(buffer1, pixelValue ? 0xFF : 0x00, bytesToSend);
+
+    Serial.printf("displayPartial x:%u y:%u w:%u h:%u bytes:%u\n", pxStartX, pxStartY, pxCountX, pxCountY, bytesToSend);
+    Serial.printf("displayPartial hscb:%u hcc:%u\n", horizStartChBank, horizChCount);
+    Serial.printf("displayPartial hspx:%u hepx:%u vsl:%u vel:%u\n", horizStartPixel, horizEndPixel, vertStartLine, vertEndLine);
+
+    memset(buffer1, 0x00, bytesToSend);
     setRAMAddress(0, 0);
     writeRAMFramebufferToEPD(buffer1, bytesToSend, 0);
 
-    pixelValue = !pixelValue;
-    delay(2);
-    
-    Serial.printf("Writing %u bytes of %u to buffer2\n", bytesToSend, pixelValue);
-    memset(buffer2, pixelValue ? 0xFF : 0x00, bytesToSend);
+    uint8_t* pPos = buffer2;
+    for (uint16_t y = 0; y < vertLineCount; y++)
+    {
+      size_t srcRow = pxStartY + pxCountY - 1 - y;
+      size_t srcCol = pxStartX / 8;
+      size_t srcIndex = srcRow * (664 / 8) + srcCol;
+
+      Serial.printf("memcpy row:%u col:%u idx:%u\n", srcRow, srcCol, srcIndex);
+
+      // TODO clamp pxCountX max
+      memcpy(pPos, epd_bitmap_buddynote + srcIndex, pxCountX / 8);
+      pPos += (pxCountX / 8);
+    }
+
+		Serial.printf("Wrote %u bytes to buffer2\n", pPos - buffer2);
+
+		//memset(buffer2, 0xFF, bytesToSend);
+
     setRAMAddress(0, 0);
     writeRAMFramebufferToEPD(buffer2, bytesToSend, 1);
 
     Serial.printf("Display refresh\n");
-    uint8_t end = 1;
-    //EPD_command(0x11); // DSP
     EPD_command(0x12); // DRF
 
     busy_wait();
@@ -2763,30 +2793,57 @@ void setup() {
 
   Serial.println("Adafruit EPD full update test in mono");
   display.begin(THINKINK_MONO);
+
+	// Startup banner
+  display.clearBuffer();
+	display.setCursor(0, 0);
+	display.setTextSize(2);
+  display.setTextColor(EPD_BLACK);
+  display.setTextWrap(true);
+  display.println("ePaper Etch-a-Sketch by Dan Mastrian");
+	display.println();
+	display.println("Version " QUOTE(_GIT_HASH));
+  display.display();
+
+	delay(2000);
 }
+
+//
+// Sequence of frames to display
+//
+// [xStart, yStart] -> (xEnd, yEnd)
+
+// NOTE: End coordinates are *exclusive* (index + 1)
+//
+int frameCoordinates[] = {
+	  0,   0, 656,  50, // Dear
+	  0,  50, 656, 190, // I'm sorry
+	  0, 190, 656, 280, // I don't belong
+	  0, 280, 370, 400, // I'll never forget / goodbye
+	  0, 400, 370, 480, // PS Merry Christmas
+	360, 240, 656, 480, // Buddy picture
+};
 
 void loop()
 {
-  Serial.println("Banner demo");
+	// Reset to white
   display.clearBuffer();
 	display.display();
 
-	display.setCustomLUTs();
+	// TODO wait for start button press
 
-  display.clearBuffer();
-	display.drawBitmap(0, 0, epd_bitmap_buddynote, 663, 480, 1);
-  display.display();
-  delay(2000);
-
-  while (true)
+	for (int coordIdx = 0; coordIdx < sizeof(frameCoordinates) / sizeof(frameCoordinates[0]); coordIdx += 4)
   {
-    display.displayPartial();
+		Serial.printf("Bitmap size: %u bytes\n", sizeof(epd_bitmap_buddynote));
+    display.displayPartial(
+			frameCoordinates[coordIdx + 0],
+			frameCoordinates[coordIdx + 1],
+			frameCoordinates[coordIdx + 2] - frameCoordinates[coordIdx + 0],
+			frameCoordinates[coordIdx + 3] - frameCoordinates[coordIdx + 1]);
   }
+
+	// TODO wait for reset button press
+
+  delay(2000);
 }
 
-void testdrawtext(const char *text, uint16_t color) {
-  display.setCursor(0, 0);
-  display.setTextColor(color);
-  display.setTextWrap(true);
-  display.print(text);
-}
