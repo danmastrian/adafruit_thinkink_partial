@@ -2681,7 +2681,7 @@ class ThinkInk_750_Mono_AAAMFGN_Custom : public ThinkInk_750_Mono_AAAMFGN
     uint8_t psrData = 0b110111; // LUT from register
     EPD_command(0x00, &psrData, 1);
 
-    //uint8_t pllData = 0b00001011; // 100 Hz -> makes black much dimmer than default of 50 Hz
+    //uint8_t pllData = 0b00001010; // 70 Hz -> makes black much dimmer than default of 50 Hz
     //EPD_command(0x30, &pllData, 1);
 
     uint8_t cmdBuf[] = { 0x90, 0x07 }; // VCOM - disable border?
@@ -2800,9 +2800,12 @@ void setup() {
 	display.setTextSize(2);
   display.setTextColor(EPD_BLACK);
   display.setTextWrap(true);
+  display.println();
   display.println("ePaper Etch-a-Sketch by Dan Mastrian");
+  display.println();
+  display.println("Branch " QUOTE(_GIT_BRANCH) " " QUOTE(_GIT_HASH) " " QUOTE(_GIT_STATUS));
 	display.println();
-	display.println("Version " QUOTE(_GIT_HASH));
+  display.println("https://github.com/danmastrian/adafruit_thinkink_partial");
   display.display();
 
 	delay(2000);
